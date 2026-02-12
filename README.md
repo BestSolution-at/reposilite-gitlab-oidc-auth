@@ -6,8 +6,7 @@ jobs using [OIDC ID tokens](https://docs.gitlab.com/ci/secrets/id_token_authenti
 GitLab CI pipelines present a short-lived JWT as the password via HTTP Basic
 Auth. The plugin verifies the token cryptographically against the GitLab JWKS
 endpoint and creates a TEMPORARY access token with route-based permissions
-derived from the JWT claims. This allows fine-grained repository access control
-without long-lived credentials.
+derived from **template tokens** stored in the Reposilite database.
 
 ## How It Works
 
@@ -16,49 +15,113 @@ without long-lived credentials.
    - **username**: `gitlab-oidc` (configurable)
    - **password**: the OIDC JWT
 3. The plugin verifies the JWT signature via the GitLab JWKS endpoint
-4. On success, the plugin creates a TEMPORARY access token with routes
-   derived from the JWT claims and plugin configuration
-5. Non-CI users (any other username) pass through to the next authenticator
+4. The plugin looks up **template tokens** by name (derived from JWT claims)
+   and unions their routes
+5. A TEMPORARY access token is created with the combined routes
+6. Non-CI users (any other username) pass through to the next authenticator
    (BasicAuthenticator or LDAP)
 
-## Route Permissions
+## Authorization via Template Tokens
 
-The plugin assigns route-based permissions (READ/WRITE on repository paths)
-based on the `ref_protected` JWT claim.
+The plugin uses Reposilite's native token system for authorization. Instead of
+configuring repository permissions in `configuration.shared.json`, you create
+persistent **template tokens** in the database with a naming convention. The
+plugin looks up matching tokens at authentication time and clones their routes
+to the ephemeral CI token.
 
-| Condition | Permissions |
-|-----------|-------------|
-| Every valid JWT | READ on all `ciReadRepositories` |
-| JWT with `ref_protected: "true"` | READ + WRITE on `ciWriteRepositories` |
-| JWT with `ref_protected: "false"` | READ only (no WRITE) |
+### Naming Convention
+
+| Token name pattern | Matched when |
+| -------------------- | -------------- |
+| `gitlab-ci:{namespace}` | Any CI job in the GitLab namespace (group) |
+| `gitlab-ci:{project_path}` | Any CI job in the specific project |
+| `gitlab-ci-protected:{namespace}` | CI job on a **protected** branch/tag in the namespace |
+| `gitlab-ci-protected:{project_path}` | CI job on a **protected** branch/tag in the project |
+
+The plugin extracts `namespace_path`, `project_path`, and `ref_protected` from
+the JWT claims and looks up matching template tokens. Routes from all matching
+tokens are unioned into the ephemeral token.
+
+### Lookup Rules
+
+**Unprotected ref** (feature branch): looks up 2 tokens
+
+- `gitlab-ci:{namespace_path}`
+- `gitlab-ci:{project_path}`
+
+**Protected ref** (main, tags): looks up 4 tokens
+
+- `gitlab-ci:{namespace_path}`
+- `gitlab-ci:{project_path}`
+- `gitlab-ci-protected:{namespace_path}`
+- `gitlab-ci-protected:{project_path}`
+
+Any token that doesn't exist is silently skipped. If no template tokens match,
+the CI token is created with zero routes (authentication succeeds, but all
+repository access is denied).
 
 ### Example
 
-With this configuration:
+Given these template tokens in the database:
 
-```json
-{
-  "ciReadRepositories": ["releases", "snapshots"],
-  "ciWriteRepositories": ["releases", "snapshots"]
-}
+| Token name | Routes |
+| ------------ | -------- |
+| `gitlab-ci:beso` | READ on `/releases`, `/snapshots` |
+| `gitlab-ci-protected:beso` | WRITE on `/releases`, `/snapshots` |
+| `gitlab-ci:beso/internal-lib` | READ on `/internal-releases` |
+
+**Feature branch build** in `beso/my-app`:
+
+- Matches: `gitlab-ci:beso` (namespace)
+- Result: READ on `/releases`, `/snapshots`
+
+**Protected branch build** in `beso/my-app` (e.g. `main`):
+
+- Matches: `gitlab-ci:beso` + `gitlab-ci-protected:beso`
+- Result: READ + WRITE on `/releases`, `/snapshots`
+
+**Protected branch build** in `beso/internal-lib`:
+
+- Matches: `gitlab-ci:beso` + `gitlab-ci:beso/internal-lib` + `gitlab-ci-protected:beso`
+- Result: READ on `/releases`, `/snapshots`, `/internal-releases`; WRITE on `/releases`, `/snapshots`
+
+### Creating Template Tokens
+
+Template tokens are regular Reposilite access tokens. Create them using the
+Reposilite CLI, REST API, or web dashboard.
+
+**Via Reposilite CLI** (in the web dashboard console):
+
+```text
+token-generate gitlab-ci:beso
+token-route-add gitlab-ci:beso /releases r
+token-route-add gitlab-ci:beso /snapshots r
+token-generate gitlab-ci-protected:beso
+token-route-add gitlab-ci-protected:beso /releases rw
+token-route-add gitlab-ci-protected:beso /snapshots rw
 ```
 
-**Protected branch/tag build** (e.g. `main`):
+**Via REST API** (using the Reposilite token API):
 
-- READ on `/releases`, `/snapshots`
-- WRITE on `/releases`, `/snapshots`
+```bash
+curl -u admin:secret -X PUT "https://maven.example.com/api/tokens/gitlab-ci:beso" \
+  -H "Content-Type: application/json" \
+  -d '{"permissions":[]}'
+```
 
-**Feature branch build** (e.g. `feature/foo`):
-
-- READ on `/releases`, `/snapshots`
-- No WRITE access
+Do not specify a `secret` -- let Reposilite generate a strong random one.
+The plugin never authenticates with the template token itself (it only reads
+its name and routes), so the secret can remain unknown. See
+[Template token secrets](#template-token-secrets) for why this matters.
 
 ## Installation
 
-1. Build the plugin JAR (see [Development](#development))
+1. Download the plugin JAR from
+   [GitHub Releases](https://github.com/BestSolution-at/reposilite-gitlab-oidc-auth/releases)
 2. Copy the JAR to Reposilite's `plugins/` directory
 3. Restart Reposilite
 4. Configure via the web dashboard or `configuration.shared.json`
+5. Create template tokens for your namespaces/projects
 
 ## Configuration
 
@@ -72,9 +135,7 @@ the `gitlab_ci_auth` key in `configuration.shared.json`:
     "gitlabUrl": "https://gitlab.example.com",
     "audience": "https://maven.example.com",
     "ciUsername": "gitlab-oidc",
-    "jwksCacheTtl": 86400,
-    "ciReadRepositories": ["releases", "snapshots"],
-    "ciWriteRepositories": ["releases", "snapshots"]
+    "jwksCacheTtl": 86400
   }
 }
 ```
@@ -88,8 +149,9 @@ the `gitlab_ci_auth` key in `configuration.shared.json`:
 | `audience` | yes | -- | Expected `aud` claim in the JWT (must match `aud` in GitLab `id_tokens`) |
 | `ciUsername` | no | `gitlab-oidc` | Username that triggers OIDC authentication |
 | `jwksCacheTtl` | no | `86400` | How long to cache the JWKS keys (seconds) |
-| `ciReadRepositories` | yes | `[]` | Repository names for READ access (all CI builds) |
-| `ciWriteRepositories` | yes | `[]` | Repository names for WRITE access (protected refs only) |
+
+Authorization is configured entirely via template tokens in the database, not
+in this configuration file.
 
 ## Authentication Chain
 
@@ -108,8 +170,8 @@ deploy tokens, and LDAP users are unaffected.
 ## Security Considerations
 
 - **Branch/tag protection matters**: Only branches and tags marked as "protected"
-  in GitLab produce `ref_protected: "true"` in the JWT. Without this, CI builds
-  only get READ access to repositories.
+  in GitLab produce `ref_protected: "true"` in the JWT. The plugin uses this to
+  gate access to `gitlab-ci-protected:*` template token routes.
 
 - **No long-lived credentials**: OIDC tokens are short-lived JWTs (typically
   5 minutes). They cannot be reused after expiry and do not need to be rotated
@@ -126,6 +188,18 @@ deploy tokens, and LDAP users are unaffected.
 - **TEMPORARY tokens**: Created tokens use the `TEMPORARY` type and are scoped
   to the minimum required routes. Each job gets a unique token name
   (`gitlab-ci-{job_id}`).
+
+- **Namespace isolation**: A CI job in namespace `beso` cannot access routes
+  from template tokens in namespace `onacta`. The plugin derives the lookup
+  names strictly from JWT claims.
+
+- **Template token secrets**: Template tokens are regular Reposilite access
+  tokens. If a template token has a weak or known secret (e.g. `"unused"`),
+  an attacker could authenticate directly via BasicAuthenticator using that
+  secret — bypassing the OIDC plugin entirely. Always let Reposilite generate
+  a strong random secret when creating template tokens (do not specify a
+  `secret` field). Since the OIDC plugin never uses the secret, it can remain
+  unknown.
 
 ## GitLab CI Usage
 
@@ -208,7 +282,7 @@ src/
     GitlabCiAuthSettings.kt      # SharedSettings configuration
     AccessTokenOps.kt            # Testability abstraction
   test/kotlin/.../gitlab/
-    GitlabCiAuthenticatorTest.kt # Unit tests (11 test cases)
+    GitlabCiAuthenticatorTest.kt # Unit tests (18 test cases)
     GitlabCiAuthenticatorTestFactory.kt
     FakeAccessTokenFacade.kt
     NoopJournalist.kt
