@@ -19,6 +19,7 @@ import io.javalin.http.HttpStatus
 import panda.std.Result
 import panda.std.reactive.Reference
 import java.net.URI
+import java.security.MessageDigest
 
 class GitlabCiAuthenticator(
     private val journalist: Journalist,
@@ -63,11 +64,17 @@ class GitlabCiAuthenticator(
                 )
             }
 
+            // BCrypt (used by Reposilite) has a 72-byte limit; JWTs are much longer.
+            // Hash the JWT to a fixed-length hex string for the temporary token secret.
+            val hashBytes = MessageDigest.getInstance("SHA-256")
+                .digest((credentials.secret as java.lang.String).getBytes(java.nio.charset.StandardCharsets.UTF_8))
+            val secretHash = java.util.HexFormat.of().formatHex(hashBytes)
+
             val response = accessTokenOps.createAccessToken(
                 CreateAccessTokenRequest(
                     type = AccessTokenType.TEMPORARY,
                     name = tokenName,
-                    secret = credentials.secret,
+                    secret = secretHash,
                     routes = routes,
                 )
             )
