@@ -33,10 +33,10 @@ to the ephemeral CI token.
 
 | Token name pattern | Matched when |
 | -------------------- | -------------- |
-| `gitlab-ci:{namespace}` | Any CI job in the GitLab namespace (group) |
-| `gitlab-ci:{project_path}` | Any CI job in the specific project |
-| `gitlab-ci-protected:{namespace}` | CI job on a **protected** branch/tag in the namespace |
-| `gitlab-ci-protected:{project_path}` | CI job on a **protected** branch/tag in the project |
+| `gitlab-ci.{namespace}` | Any CI job in the GitLab namespace (group) |
+| `gitlab-ci.{project_path}` | Any CI job in the specific project |
+| `gitlab-ci-protected.{namespace}` | CI job on a **protected** branch/tag in the namespace |
+| `gitlab-ci-protected.{project_path}` | CI job on a **protected** branch/tag in the project |
 
 The plugin extracts `namespace_path`, `project_path`, and `ref_protected` from
 the JWT claims and looks up matching template tokens. Routes from all matching
@@ -46,15 +46,15 @@ tokens are unioned into the ephemeral token.
 
 **Unprotected ref** (feature branch): looks up 2 tokens
 
-- `gitlab-ci:{namespace_path}`
-- `gitlab-ci:{project_path}`
+- `gitlab-ci.{namespace_path}`
+- `gitlab-ci.{project_path}`
 
 **Protected ref** (main, tags): looks up 4 tokens
 
-- `gitlab-ci:{namespace_path}`
-- `gitlab-ci:{project_path}`
-- `gitlab-ci-protected:{namespace_path}`
-- `gitlab-ci-protected:{project_path}`
+- `gitlab-ci.{namespace_path}`
+- `gitlab-ci.{project_path}`
+- `gitlab-ci-protected.{namespace_path}`
+- `gitlab-ci-protected.{project_path}`
 
 Any token that doesn't exist is silently skipped. If no template tokens match,
 the CI token is created with zero routes (authentication succeeds, but all
@@ -66,23 +66,23 @@ Given these template tokens in the database:
 
 | Token name | Routes |
 | ------------ | -------- |
-| `gitlab-ci:beso` | READ on `/releases`, `/snapshots` |
-| `gitlab-ci-protected:beso` | WRITE on `/releases`, `/snapshots` |
-| `gitlab-ci:beso/internal-lib` | READ on `/internal-releases` |
+| `gitlab-ci.beso` | READ on `/releases`, `/snapshots` |
+| `gitlab-ci-protected.beso` | WRITE on `/releases`, `/snapshots` |
+| `gitlab-ci.beso/internal-lib` | READ on `/internal-releases` |
 
 **Feature branch build** in `beso/my-app`:
 
-- Matches: `gitlab-ci:beso` (namespace)
+- Matches: `gitlab-ci.beso` (namespace)
 - Result: READ on `/releases`, `/snapshots`
 
 **Protected branch build** in `beso/my-app` (e.g. `main`):
 
-- Matches: `gitlab-ci:beso` + `gitlab-ci-protected:beso`
+- Matches: `gitlab-ci.beso` + `gitlab-ci-protected.beso`
 - Result: READ + WRITE on `/releases`, `/snapshots`
 
 **Protected branch build** in `beso/internal-lib`:
 
-- Matches: `gitlab-ci:beso` + `gitlab-ci:beso/internal-lib` + `gitlab-ci-protected:beso`
+- Matches: `gitlab-ci.beso` + `gitlab-ci.beso/internal-lib` + `gitlab-ci-protected.beso`
 - Result: READ on `/releases`, `/snapshots`, `/internal-releases`; WRITE on `/releases`, `/snapshots`
 
 ### Creating Template Tokens
@@ -93,18 +93,18 @@ Reposilite CLI, REST API, or web dashboard.
 **Via Reposilite CLI** (in the web dashboard console):
 
 ```text
-token-generate gitlab-ci:beso
-token-route-add gitlab-ci:beso /releases r
-token-route-add gitlab-ci:beso /snapshots r
-token-generate gitlab-ci-protected:beso
-token-route-add gitlab-ci-protected:beso /releases rw
-token-route-add gitlab-ci-protected:beso /snapshots rw
+token-generate gitlab-ci.beso
+token-route-add gitlab-ci.beso /releases r
+token-route-add gitlab-ci.beso /snapshots r
+token-generate gitlab-ci-protected.beso
+token-route-add gitlab-ci-protected.beso /releases rw
+token-route-add gitlab-ci-protected.beso /snapshots rw
 ```
 
 **Via REST API** (using the Reposilite token API):
 
 ```bash
-curl -u admin:secret -X PUT "https://maven.example.com/api/tokens/gitlab-ci:beso" \
+curl -u admin:secret -X PUT "https://maven.example.com/api/tokens/gitlab-ci.beso" \
   -H "Content-Type: application/json" \
   -d '{"permissions":[]}'
 ```
@@ -171,7 +171,7 @@ deploy tokens, and LDAP users are unaffected.
 
 - **Branch/tag protection matters**: Only branches and tags marked as "protected"
   in GitLab produce `ref_protected: "true"` in the JWT. The plugin uses this to
-  gate access to `gitlab-ci-protected:*` template token routes.
+  gate access to `gitlab-ci-protected.*` template token routes.
 
 - **No long-lived credentials**: OIDC tokens are short-lived JWTs (typically
   5 minutes). They cannot be reused after expiry and do not need to be rotated

@@ -10,7 +10,7 @@ import com.reposilite.token.AccessTokenFacade
 
 @Plugin(
     name = "gitlab-ci-auth",
-    dependencies = ["access-token", "shared-configuration"],
+    dependencies = ["access-token", "authentication", "shared-configuration"],
     settings = GitlabCiAuthSettings::class,
 )
 class GitlabCiAuthPlugin : ReposilitePlugin() {

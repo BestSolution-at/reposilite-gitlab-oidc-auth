@@ -101,7 +101,7 @@ class GitlabCiAuthenticatorTest {
     @Test
     fun `valid JWT creates TEMPORARY token`() {
         fakeAccessTokenFacade.addTemplateToken(
-            "gitlab-ci:mygroup",
+            "gitlab-ci.mygroup",
             setOf(Route("/releases", RoutePermission.READ)),
         )
         val auth = createAuthenticator()
@@ -191,7 +191,7 @@ class GitlabCiAuthenticatorTest {
     @Test
     fun `concurrent jobs get separate tokens`() {
         fakeAccessTokenFacade.addTemplateToken(
-            "gitlab-ci:mygroup",
+            "gitlab-ci.mygroup",
             setOf(Route("/releases", RoutePermission.READ)),
         )
         val auth = createAuthenticator()
@@ -216,7 +216,7 @@ class GitlabCiAuthenticatorTest {
     @Test
     fun `created token is TEMPORARY type`() {
         fakeAccessTokenFacade.addTemplateToken(
-            "gitlab-ci:mygroup",
+            "gitlab-ci.mygroup",
             setOf(Route("/releases", RoutePermission.READ)),
         )
         val auth = createAuthenticator()
@@ -232,7 +232,7 @@ class GitlabCiAuthenticatorTest {
     @Test
     fun `created token has no MANAGER permission`() {
         fakeAccessTokenFacade.addTemplateToken(
-            "gitlab-ci:mygroup",
+            "gitlab-ci.mygroup",
             setOf(Route("/releases", RoutePermission.READ)),
         )
         val auth = createAuthenticator()
@@ -253,11 +253,11 @@ class GitlabCiAuthenticatorTest {
     @Test
     fun `unprotected ref gets routes from gitlab-ci namespace token only`() {
         fakeAccessTokenFacade.addTemplateToken(
-            "gitlab-ci:beso",
+            "gitlab-ci.beso",
             setOf(Route("/beso-releases", RoutePermission.READ)),
         )
         fakeAccessTokenFacade.addTemplateToken(
-            "gitlab-ci-protected:beso",
+            "gitlab-ci-protected.beso",
             setOf(Route("/beso-releases", RoutePermission.WRITE)),
         )
         val auth = createAuthenticator()
@@ -271,7 +271,7 @@ class GitlabCiAuthenticatorTest {
 
         val routes = fakeAccessTokenFacade.lastCreatedRequest!!.routes
         assertTrue(routes.any { it.path == "/beso-releases" && RoutePermission.READ in it.permissions },
-            "Should have READ from gitlab-ci:beso")
+            "Should have READ from gitlab-ci.beso")
         assertTrue(routes.none { RoutePermission.WRITE in it.permissions },
             "Should NOT have WRITE (not protected)")
     }
@@ -281,11 +281,11 @@ class GitlabCiAuthenticatorTest {
     @Test
     fun `protected ref gets routes from both gitlab-ci and gitlab-ci-protected namespace tokens`() {
         fakeAccessTokenFacade.addTemplateToken(
-            "gitlab-ci:beso",
+            "gitlab-ci.beso",
             setOf(Route("/beso-releases", RoutePermission.READ)),
         )
         fakeAccessTokenFacade.addTemplateToken(
-            "gitlab-ci-protected:beso",
+            "gitlab-ci-protected.beso",
             setOf(Route("/beso-releases", RoutePermission.WRITE)),
         )
         val auth = createAuthenticator()
@@ -299,9 +299,9 @@ class GitlabCiAuthenticatorTest {
 
         val routes = fakeAccessTokenFacade.lastCreatedRequest!!.routes
         assertTrue(routes.any { it.path == "/beso-releases" && RoutePermission.READ in it.permissions },
-            "Should have READ from gitlab-ci:beso")
+            "Should have READ from gitlab-ci.beso")
         assertTrue(routes.any { it.path == "/beso-releases" && RoutePermission.WRITE in it.permissions },
-            "Should have WRITE from gitlab-ci-protected:beso")
+            "Should have WRITE from gitlab-ci-protected.beso")
     }
 
     // --- TP-2.3: Namespace + project token union ---
@@ -309,11 +309,11 @@ class GitlabCiAuthenticatorTest {
     @Test
     fun `project token routes are unioned with namespace token routes`() {
         fakeAccessTokenFacade.addTemplateToken(
-            "gitlab-ci:beso",
+            "gitlab-ci.beso",
             setOf(Route("/shared-releases", RoutePermission.READ)),
         )
         fakeAccessTokenFacade.addTemplateToken(
-            "gitlab-ci:beso/my-app",
+            "gitlab-ci.beso/my-app",
             setOf(Route("/internal-releases", RoutePermission.READ)),
         )
         val auth = createAuthenticator()
@@ -327,9 +327,9 @@ class GitlabCiAuthenticatorTest {
 
         val routes = fakeAccessTokenFacade.lastCreatedRequest!!.routes
         assertTrue(routes.any { it.path == "/shared-releases" && RoutePermission.READ in it.permissions },
-            "Should have READ from gitlab-ci:beso (namespace)")
+            "Should have READ from gitlab-ci.beso (namespace)")
         assertTrue(routes.any { it.path == "/internal-releases" && RoutePermission.READ in it.permissions },
-            "Should have READ from gitlab-ci:beso/my-app (project)")
+            "Should have READ from gitlab-ci.beso/my-app (project)")
     }
 
     // --- TP-2.4: Protected ref → all four lookups ---
@@ -337,19 +337,19 @@ class GitlabCiAuthenticatorTest {
     @Test
     fun `protected ref looks up all four token combinations`() {
         fakeAccessTokenFacade.addTemplateToken(
-            "gitlab-ci:beso",
+            "gitlab-ci.beso",
             setOf(Route("/repo-a", RoutePermission.READ)),
         )
         fakeAccessTokenFacade.addTemplateToken(
-            "gitlab-ci:beso/my-app",
+            "gitlab-ci.beso/my-app",
             setOf(Route("/repo-b", RoutePermission.READ)),
         )
         fakeAccessTokenFacade.addTemplateToken(
-            "gitlab-ci-protected:beso",
+            "gitlab-ci-protected.beso",
             setOf(Route("/repo-c", RoutePermission.WRITE)),
         )
         fakeAccessTokenFacade.addTemplateToken(
-            "gitlab-ci-protected:beso/my-app",
+            "gitlab-ci-protected.beso/my-app",
             setOf(Route("/repo-d", RoutePermission.WRITE)),
         )
         val auth = createAuthenticator()
@@ -362,10 +362,10 @@ class GitlabCiAuthenticatorTest {
         auth.authenticate(Credentials("127.0.0.1", CI_USERNAME, jwt))
 
         val routes = fakeAccessTokenFacade.lastCreatedRequest!!.routes
-        assertTrue(routes.any { it.path == "/repo-a" }, "Should include routes from gitlab-ci:beso")
-        assertTrue(routes.any { it.path == "/repo-b" }, "Should include routes from gitlab-ci:beso/my-app")
-        assertTrue(routes.any { it.path == "/repo-c" }, "Should include routes from gitlab-ci-protected:beso")
-        assertTrue(routes.any { it.path == "/repo-d" }, "Should include routes from gitlab-ci-protected:beso/my-app")
+        assertTrue(routes.any { it.path == "/repo-a" }, "Should include routes from gitlab-ci.beso")
+        assertTrue(routes.any { it.path == "/repo-b" }, "Should include routes from gitlab-ci.beso/my-app")
+        assertTrue(routes.any { it.path == "/repo-c" }, "Should include routes from gitlab-ci-protected.beso")
+        assertTrue(routes.any { it.path == "/repo-d" }, "Should include routes from gitlab-ci-protected.beso/my-app")
     }
 
     // --- TP-2.5: No matching templates → zero routes ---
@@ -391,11 +391,11 @@ class GitlabCiAuthenticatorTest {
     @Test
     fun `namespace isolation - beso project does not get onacta routes`() {
         fakeAccessTokenFacade.addTemplateToken(
-            "gitlab-ci:beso",
+            "gitlab-ci.beso",
             setOf(Route("/beso-releases", RoutePermission.READ)),
         )
         fakeAccessTokenFacade.addTemplateToken(
-            "gitlab-ci:onacta",
+            "gitlab-ci.onacta",
             setOf(Route("/onacta-releases", RoutePermission.READ)),
         )
         val auth = createAuthenticator()
@@ -417,7 +417,7 @@ class GitlabCiAuthenticatorTest {
     @Test
     fun `project isolation - other project does not get project-specific routes`() {
         fakeAccessTokenFacade.addTemplateToken(
-            "gitlab-ci-protected:beso/team-a-libs",
+            "gitlab-ci-protected.beso/team-a-libs",
             setOf(Route("/internal-releases", RoutePermission.WRITE)),
         )
         val auth = createAuthenticator()
@@ -431,7 +431,7 @@ class GitlabCiAuthenticatorTest {
 
         val routes = fakeAccessTokenFacade.lastCreatedRequest!!.routes
         assertTrue(routes.none { it.path == "/internal-releases" },
-            "beso/other-project should NOT get routes from gitlab-ci-protected:beso/team-a-libs")
+            "beso/other-project should NOT get routes from gitlab-ci-protected.beso/team-a-libs")
     }
 
     // --- TP-2.8: Template token with no routes ---
@@ -439,7 +439,7 @@ class GitlabCiAuthenticatorTest {
     @Test
     fun `template token with no routes contributes nothing`() {
         fakeAccessTokenFacade.addTemplateToken(
-            "gitlab-ci:beso",
+            "gitlab-ci.beso",
             emptySet(), // no routes
         )
         val auth = createAuthenticator()

@@ -98,13 +98,13 @@ class GitlabCiAuthenticator(
         val domainRoutes = mutableSetOf<com.reposilite.token.Route>()
 
         // Always look up unprotected (any CI) tokens
-        lookupTemplateRoutes("gitlab-ci:$namespacePath")?.let { domainRoutes.addAll(it) }
-        lookupTemplateRoutes("gitlab-ci:$projectPath")?.let { domainRoutes.addAll(it) }
+        lookupTemplateRoutes("gitlab-ci.$namespacePath")?.let { domainRoutes.addAll(it) }
+        lookupTemplateRoutes("gitlab-ci.$projectPath")?.let { domainRoutes.addAll(it) }
 
         // If protected branch/tag, also look up protected tokens
         if (refProtected) {
-            lookupTemplateRoutes("gitlab-ci-protected:$namespacePath")?.let { domainRoutes.addAll(it) }
-            lookupTemplateRoutes("gitlab-ci-protected:$projectPath")?.let { domainRoutes.addAll(it) }
+            lookupTemplateRoutes("gitlab-ci-protected.$namespacePath")?.let { domainRoutes.addAll(it) }
+            lookupTemplateRoutes("gitlab-ci-protected.$projectPath")?.let { domainRoutes.addAll(it) }
         }
 
         // Convert domain Routes (single permission each) to request Routes (set of permissions)
