@@ -127,11 +127,11 @@ class GitlabCiAuthenticator(
     private fun createJwtProcessor(): DefaultJWTProcessor<SecurityContext> {
         val config = settings.get()
         val jwksUrl = URI("${config.gitlabUrl}/oauth/discovery/keys").toURL()
-        val cacheTtlMs = config.jwksCacheTtl * 1000
-        val cacheRefreshMs = cacheTtlMs
+        val cacheTtlMs = config.jwksCacheTtl * 1000L
+        val cacheRefreshTimeoutMs = 15_000L // timeout for a single JWKS refresh attempt
 
         val jwkSource = JWKSourceBuilder.create<SecurityContext>(jwksUrl)
-            .cache(cacheTtlMs, cacheRefreshMs)
+            .cache(cacheTtlMs, cacheRefreshTimeoutMs)
             .retrying(true)
             .build()
 
