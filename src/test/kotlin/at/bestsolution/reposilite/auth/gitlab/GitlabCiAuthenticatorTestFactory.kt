@@ -27,10 +27,10 @@ object GitlabCiAuthenticatorTestFactory {
 
         val processor = DefaultJWTProcessor<SecurityContext>()
         processor.jwsKeySelector = keySelector
+        // Audience is validated manually in authenticate() with trailing-slash
+        // normalization — do not set audience on the verifier here.
         processor.jwtClaimsSetVerifier = DefaultJWTClaimsVerifier(
-            JWTClaimsSet.Builder()
-                .audience(settings.audience)
-                .build(),
+            JWTClaimsSet.Builder().build(),
             setOf("sub", "iss", "exp", "aud"),
         )
 

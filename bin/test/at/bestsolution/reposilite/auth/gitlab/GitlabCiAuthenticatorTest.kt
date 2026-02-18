@@ -138,6 +138,41 @@ class GitlabCiAuthenticatorTest {
         assertTrue(result.isErr, "Wrong audience should be rejected")
     }
 
+    // --- TP-1.3a: Trailing slash in JWT audience ---
+
+    @Test
+    fun `tolerates trailing slash in JWT audience`() {
+        fakeAccessTokenFacade.addTemplateToken(
+            "gitlab-ci.mygroup",
+            setOf(Route("/releases", RoutePermission.READ)),
+        )
+        val auth = createAuthenticator()
+        val jwt = buildJwt(audience = "$AUDIENCE/")
+
+        val result = auth.authenticate(Credentials("127.0.0.1", CI_USERNAME, jwt))
+
+        assertTrue(result.isOk, "Trailing slash in JWT audience should be tolerated")
+        assertEquals("gitlab-ci-12345", fakeAccessTokenFacade.lastCreatedRequest!!.name)
+    }
+
+    // --- TP-1.3b: Trailing slash in configured audience ---
+
+    @Test
+    fun `tolerates trailing slash in configured audience`() {
+        settings = settings.copy(audience = "$AUDIENCE/")
+        fakeAccessTokenFacade.addTemplateToken(
+            "gitlab-ci.mygroup",
+            setOf(Route("/releases", RoutePermission.READ)),
+        )
+        val auth = createAuthenticator()
+        val jwt = buildJwt()
+
+        val result = auth.authenticate(Credentials("127.0.0.1", CI_USERNAME, jwt))
+
+        assertTrue(result.isOk, "Trailing slash in configured audience should be tolerated")
+        assertEquals("gitlab-ci-12345", fakeAccessTokenFacade.lastCreatedRequest!!.name)
+    }
+
     // --- TP-1.4: Wrong issuer ---
 
     @Test

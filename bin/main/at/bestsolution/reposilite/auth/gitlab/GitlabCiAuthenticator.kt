@@ -40,12 +40,26 @@ class GitlabCiAuthenticator(
         return try {
             val claims = jwtProcessor.process(credentials.secret, null)
 
-            // Validate issuer (nimbus validates aud and exp, but not iss)
+            // Validate issuer (nimbus validates exp, but not iss)
             if (claims.issuer != config.gitlabUrl) {
                 journalist.logger.warn(
                     "gitlab-ci-auth: JWT issuer mismatch: expected=${config.gitlabUrl}, got=${claims.issuer}"
                 )
                 return Result.error(ErrorResponse(HttpStatus.UNAUTHORIZED, "Invalid token issuer"))
+            }
+
+            // Validate audience with trailing-slash normalization.
+            // GitLab CI id_tokens may include a trailing slash depending on how
+            // the audience variable is configured.  Nimbus's built-in check is
+            // exact, so we do it manually here instead.
+            // See: https://github.com/BestSolution-at/verdaccio-gitlab-oidc-auth/issues/14
+            val expectedAud = config.audience.trimEnd('/')
+            val tokenAudiences = claims.audience ?: emptyList()
+            if (tokenAudiences.none { it.trimEnd('/') == expectedAud }) {
+                journalist.logger.warn(
+                    "gitlab-ci-auth: JWT audience mismatch: expected=${config.audience}, got=$tokenAudiences"
+                )
+                return Result.error(ErrorResponse(HttpStatus.UNAUTHORIZED, "Invalid token audience"))
             }
 
             val jobId = claims.getStringClaim("job_id") ?: "unknown"
@@ -146,10 +160,11 @@ class GitlabCiAuthenticator(
 
         val processor = DefaultJWTProcessor<SecurityContext>()
         processor.jwsKeySelector = keySelector
+        // Audience is validated manually in authenticate() with trailing-slash
+        // normalization (see verdaccio-gitlab-oidc-auth#14). We still require
+        // the "aud" claim to be present via the required-claims set.
         processor.jwtClaimsSetVerifier = DefaultJWTClaimsVerifier(
-            JWTClaimsSet.Builder()
-                .audience(config.audience)
-                .build(),
+            JWTClaimsSet.Builder().build(),
             setOf("sub", "iss", "exp", "aud"),
         )
 
