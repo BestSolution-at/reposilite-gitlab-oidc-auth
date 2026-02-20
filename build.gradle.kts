@@ -6,9 +6,10 @@ plugins {
 }
 
 group = "at.bestsolution"
-version = "0.1.3"
+version = "0.1.4"
 
 repositories {
+    mavenLocal()
     mavenCentral()
     maven("https://maven.reposilite.com/releases")
     maven("https://maven.reposilite.com/snapshots")
@@ -16,7 +17,8 @@ repositories {
 
 dependencies {
     // Reposilite — provided at runtime by the container
-    compileOnly("com.reposilite:reposilite-backend:3.5.26")
+    // Using 3.5.27-SNAPSHOT from mavenLocal (fork with expiresAt support)
+    compileOnly("com.reposilite:reposilite-backend:3.5.27-SNAPSHOT")
 
     // JWT verification — bundled in the fat JAR
     implementation("com.nimbusds:nimbus-jose-jwt:10.0.2")
@@ -24,7 +26,7 @@ dependencies {
     // Test dependencies
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
-    testImplementation("com.reposilite:reposilite-backend:3.5.26")
+    testImplementation("com.reposilite:reposilite-backend:3.5.27-SNAPSHOT")
 }
 
 java {

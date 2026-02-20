@@ -13,6 +13,7 @@ import com.reposilite.token.Route
 import com.reposilite.token.RoutePermission
 import io.javalin.http.HttpStatus
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -260,6 +261,30 @@ class GitlabCiAuthenticatorTest {
         auth.authenticate(Credentials("127.0.0.1", CI_USERNAME, jwt))
 
         assertEquals(AccessTokenType.TEMPORARY, fakeAccessTokenFacade.lastCreatedRequest!!.type)
+    }
+
+    // --- TP-1.9b: Token expiresAt matches JWT exp claim ---
+
+    @Test
+    fun `created token expiresAt matches JWT exp claim`() {
+        fakeAccessTokenFacade.addTemplateToken(
+            "gitlab-ci.mygroup",
+            setOf(Route("/releases", RoutePermission.READ)),
+        )
+        val auth = createAuthenticator()
+        val expTime = Instant.now().plusSeconds(300)
+        val jwt = buildJwt(expiresAt = Date.from(expTime))
+
+        auth.authenticate(Credentials("127.0.0.1", CI_USERNAME, jwt))
+
+        val created = fakeAccessTokenFacade.lastCreatedRequest!!
+        assertNotNull(created.expiresAt, "Token should have expiresAt set")
+        // JWT exp has second precision; compare truncated to seconds
+        assertEquals(
+            expTime.epochSecond,
+            created.expiresAt!!.epochSecond,
+            "expiresAt should match JWT exp claim",
+        )
     }
 
     // --- TP-1.10: No MANAGER permission ---

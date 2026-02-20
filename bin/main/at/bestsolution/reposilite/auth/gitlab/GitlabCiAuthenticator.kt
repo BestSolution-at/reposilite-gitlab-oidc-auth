@@ -84,12 +84,15 @@ class GitlabCiAuthenticator(
                 .digest((credentials.secret as java.lang.String).getBytes(java.nio.charset.StandardCharsets.UTF_8))
             val secretHash = java.util.HexFormat.of().formatHex(hashBytes)
 
+            val expiresAt = claims.expirationTime?.toInstant()
+
             val response = accessTokenOps.createAccessToken(
                 CreateAccessTokenRequest(
                     type = AccessTokenType.TEMPORARY,
                     name = tokenName,
                     secret = secretHash,
                     routes = routes,
+                    expiresAt = expiresAt,
                 )
             )
 
